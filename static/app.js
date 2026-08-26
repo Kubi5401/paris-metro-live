@@ -322,6 +322,11 @@ function buildEverything() {
     circle.setAttribute("cy", st.y);
     circle.setAttribute("r", visualR);
     circle.setAttribute("class", "station-dot" + (isInterchange ? " interchange" : ""));
+    // Sans ça, le contour blanc grossit avec le zoom (il vit dans le même
+    // groupe SVG transformé que toute la carte) : à fort zoom, un contour de
+    // 2px devient un anneau énorme et disproportionné. "non-scaling-stroke"
+    // garde l'épaisseur du trait fixe à l'écran quel que soit le zoom.
+    circle.setAttribute("vector-effect", "non-scaling-stroke");
     circle.addEventListener("click", () => selectStation(key));
     mapGroup.appendChild(circle);
   }
