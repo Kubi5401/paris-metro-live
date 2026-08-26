@@ -125,6 +125,21 @@ def api_traffic():
             disruptions = (data or {}).get("disruptions", [])
             status = "normal"
             messages = []
+            seen = set()
+            # Mots-clés d'équipement (ascenseur, escalator...) : ce sont des
+            # pannes d'accessibilité, pas des perturbations de circulation —
+            # elles sont très nombreuses et polluent complètement l'affichage
+            # si on ne les met pas de côté.
+            EQUIPMENT_KEYWORDS = ("ascenseur", "escalator", "escalier méc", "equipement", "équipement")
+
+            def is_equipment_issue(d, title, text):
+                tags = d.get("tags") or []
+                tag_text = " ".join(
+                    (t if isinstance(t, str) else t.get("name", "")) for t in tags
+                ).lower()
+                blob = f"{tag_text} {title} {text}".lower()
+                return any(kw in blob for kw in EQUIPMENT_KEYWORDS)
+
             for d in disruptions:
                 effect = (d.get("severity") or {}).get("effect", "")
                 title = ""
@@ -135,12 +150,26 @@ def api_traffic():
                         title = m.get("text", "")
                     elif channel == "moteur":
                         text = m.get("text", "")
+
+                if is_equipment_issue(d, title, text):
+                    continue  # on ignore les pannes d'ascenseur/escalator
+
                 if effect in ("NO_SERVICE",):
                     status = "interrompu"
                 elif status != "interrompu":
                     status = "perturbe"
-                if title or text:
+
+                key = (title, text)
+                if (title or text) and key not in seen:
+                    seen.add(key)
                     messages.append({"title": title, "text": text, "effect": effect})
+
+            MAX_MESSAGES = 5
+            truncated = len(messages) - MAX_MESSAGES
+            messages = messages[:MAX_MESSAGES]
+            if truncated > 0:
+                messages.append({"title": f"+ {truncated} autre(s) message(s)", "text": "", "effect": ""})
+
             return {"status": status, "messages": messages}
 
         result[line_id] = cached(f"traffic:{line_id}", TRAFFIC_TTL, fetch)
