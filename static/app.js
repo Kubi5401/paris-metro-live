@@ -8,7 +8,7 @@
 // À incrémenter à chaque modification de ce fichier — permet de vérifier en un
 // coup d'œil sur le site en ligne si une modification a bien été déployée,
 // sans avoir à deviner si le navigateur affiche une version en cache.
-const APP_VERSION = "v8";
+const APP_VERSION = "v9";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const AVG_SPEED_MPS = 6.5; // vitesse commerciale moyenne approximative (arrêts inclus)
@@ -22,6 +22,7 @@ let lineMeta = {};      // lineId -> { color, apiLineId, status, messages }
 let stationRegistry = {}; // normalizedName -> { name, x, y, lines: [{lineId, monitoringId}] }
 let trainPaths = [];    // [{ lineId, points: [{x,y,cum}], totalLenPx, totalLenM, headway, trainsCount }]
 let selectedStationKey = null;
+let selectedCircleEl = null;   // <circle> du point visuel actuellement mis en surbrillance
 let passagesRefreshTimer = null; // ré-interroge le serveur pendant que le panneau est ouvert
 let countdownTickTimer = null;   // fait défiler les compte à rebours seconde par seconde
 const PASSAGES_REFRESH_MS = 20000;
@@ -40,6 +41,8 @@ async function init() {
 
   document.getElementById("close-panel").addEventListener("click", () => {
     document.getElementById("station-panel").classList.add("hidden");
+    if (selectedCircleEl) selectedCircleEl.classList.remove("selected");
+    selectedCircleEl = null;
     selectedStationKey = null;
     stopPassagesLiveUpdates();
   });
@@ -348,6 +351,7 @@ function buildEverything() {
     circle.setAttribute("vector-effect", "non-scaling-stroke");
     circle.dataset.stationKey = key;
     mapGroup.appendChild(circle);
+    st.circleEl = circle; // référence directe, pour la mise en surbrillance (voir selectStation)
   }
 
   buildLegend();
@@ -489,8 +493,14 @@ async function refreshTraffic() {
 // ---------- Panneau station ----------
 
 function selectStation(key) {
+  // Met en surbrillance le point de la station sélectionnée sur la carte, et
+  // retire la surbrillance de la précédente le cas échéant.
+  if (selectedCircleEl) selectedCircleEl.classList.remove("selected");
   selectedStationKey = key;
   const st = stationRegistry[key];
+  selectedCircleEl = st.circleEl || null;
+  if (selectedCircleEl) selectedCircleEl.classList.add("selected");
+
   const panel = document.getElementById("station-panel");
   panel.classList.remove("hidden");
   document.getElementById("station-name").textContent = st.name;
