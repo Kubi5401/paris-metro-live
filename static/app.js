@@ -27,6 +27,8 @@ async function init() {
   mapGroup = document.createElementNS(SVG_NS, "g");
   svg.appendChild(mapGroup);
 
+  setupZoomPan();
+
   document.getElementById("close-panel").addEventListener("click", () => {
     document.getElementById("station-panel").classList.add("hidden");
     selectedStationKey = null;
@@ -55,6 +57,147 @@ async function init() {
 function tickClock() {
   document.getElementById("clock").textContent =
     new Date().toLocaleTimeString("fr-FR");
+}
+
+// ---------- Zoom / déplacement de la carte ----------
+// Le <g id="mapGroup"> qui contient toute la carte reçoit un transform
+// "translate(x,y) scale(k)" ajusté à la molette, au glisser-déposer et au
+// pincement tactile. Le <svg> lui-même garde son viewBox 0..1000 fixe : ce
+// repère "vx,vy" (obtenu via getScreenCTM) ne bouge jamais, seul le contenu
+// à l'intérieur du groupe se déplace/zoome.
+const viewState = { x: 0, y: 0, k: 1 };
+const ZOOM_MIN = 1, ZOOM_MAX = 14;
+let dragMoved = false;
+
+function applyMapTransform() {
+  mapGroup.setAttribute("transform", `translate(${viewState.x},${viewState.y}) scale(${viewState.k})`);
+}
+
+function clientToViewboxPoint(clientX, clientY) {
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function zoomAt(vx, vy, factor) {
+  const newK = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, viewState.k * factor));
+  if (newK === viewState.k) return;
+  const dataX = (vx - viewState.x) / viewState.k;
+  const dataY = (vy - viewState.y) / viewState.k;
+  viewState.k = newK;
+  viewState.x = vx - dataX * newK;
+  viewState.y = vy - dataY * newK;
+  applyMapTransform();
+}
+
+function resetMapView() {
+  viewState.x = 0;
+  viewState.y = 0;
+  viewState.k = 1;
+  applyMapTransform();
+}
+
+function setupZoomPan() {
+  // Molette : zoom centré sur le curseur.
+  svg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const p = clientToViewboxPoint(e.clientX, e.clientY);
+    zoomAt(p.x, p.y, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+  }, { passive: false });
+
+  // Glisser (souris) / glisser & pincer (tactile), via Pointer Events pour
+  // gérer les deux avec le même code — chaque doigt/pointeur a son propre
+  // pointerId, ce qui permet de détecter un pincement à deux doigts sans
+  // avoir besoin d'écouteurs "touch" séparés.
+  const activePointers = new Map();
+  let panState = null;
+  let pinchState = null;
+
+  function startPan(clientX, clientY) {
+    panState = { lastX: clientX, lastY: clientY };
+    pinchState = null;
+  }
+
+  svg.addEventListener("pointerdown", (e) => {
+    svg.setPointerCapture(e.pointerId);
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragMoved = false;
+    if (activePointers.size === 1) {
+      svg.classList.add("panning");
+      startPan(e.clientX, e.clientY);
+    } else if (activePointers.size === 2) {
+      svg.classList.remove("panning");
+      panState = null;
+      const [a, b] = [...activePointers.values()];
+      pinchState = {
+        startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        startK: viewState.k,
+        center: clientToViewboxPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
+      };
+    }
+  });
+
+  svg.addEventListener("pointermove", (e) => {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinchState && activePointers.size === 2) {
+      const [a, b] = [...activePointers.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      if (dist > 0) {
+        const newK = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pinchState.startK * (dist / pinchState.startDist)));
+        const dataX = (pinchState.center.x - viewState.x) / viewState.k;
+        const dataY = (pinchState.center.y - viewState.y) / viewState.k;
+        viewState.k = newK;
+        viewState.x = pinchState.center.x - dataX * newK;
+        viewState.y = pinchState.center.y - dataY * newK;
+        applyMapTransform();
+        dragMoved = true;
+      }
+      return;
+    }
+
+    if (panState) {
+      const dx = e.clientX - panState.lastX;
+      const dy = e.clientY - panState.lastY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+      if (!dragMoved) return;
+      const ctm = svg.getScreenCTM();
+      viewState.x += dx / ctm.a;
+      viewState.y += dy / ctm.d;
+      applyMapTransform();
+      panState.lastX = e.clientX;
+      panState.lastY = e.clientY;
+    }
+  });
+
+  function endPointer(e) {
+    activePointers.delete(e.pointerId);
+    svg.classList.remove("panning");
+    if (activePointers.size === 1) {
+      const [[, p]] = activePointers;
+      startPan(p.x, p.y);
+    } else {
+      panState = null;
+      pinchState = null;
+    }
+  }
+  svg.addEventListener("pointerup", endPointer);
+  svg.addEventListener("pointercancel", endPointer);
+
+  // Empêche qu'un glisser se termine par la sélection accidentelle de la
+  // station survolée au moment du relâchement.
+  svg.addEventListener("click", (e) => {
+    if (dragMoved) {
+      e.stopPropagation();
+      dragMoved = false;
+    }
+  }, true);
+
+  document.getElementById("zoom-in").addEventListener("click", () => zoomAt(500, 500, 1.3));
+  document.getElementById("zoom-out").addEventListener("click", () => zoomAt(500, 500, 1 / 1.3));
+  document.getElementById("zoom-reset").addEventListener("click", resetMapView);
 }
 
 // ---------- Construction géométrique ----------
