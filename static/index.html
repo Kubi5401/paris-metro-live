@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -28,6 +28,10 @@
         officielles — la RATP ne publie pas la position GPS réelle des rames. L'état du trafic et
         les prochains passages en station, eux, sont bien issus des données temps réel officielles.
       </div>
+      <!-- Petit badge de version : permet de vérifier que la dernière version
+           déployée sur GitHub/Render est bien celle chargée par le navigateur
+           (voir APP_VERSION dans app.js). -->
+      <div class="version-badge" id="version-badge" title="Version du code chargée"></div>
     </section>
 
     <aside class="sidebar">
@@ -48,6 +52,6 @@
   <!-- Le paramètre ?v=N ci-dessous force le navigateur à retélécharger ce
        fichier au lieu de garder une ancienne version en cache. À incrémenter
        à chaque fois que app.js ou style.css est modifié. -->
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
