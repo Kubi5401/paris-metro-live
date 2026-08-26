@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
   <header class="topbar">
@@ -25,8 +25,10 @@
       </div>
       <div class="map-caveat">
         Les trains affichés sont une <strong>simulation</strong> calculée à partir des fréquences
-        officielles — la RATP ne publie pas la position GPS réelle des rames. L'état du trafic et
-        les prochains passages en station, eux, sont bien issus des données temps réel officielles.
+        officielles — la RATP ne publie pas la position GPS réelle des rames. Leur position ne
+        correspond donc pas exactement aux horaires du SIEL. L'état du trafic et les prochains
+        passages en station, eux, sont bien issus des données temps réel officielles : un point
+        blanc pulsant apparaît directement sur une station quand le SIEL y annonce une rame à quai.
       </div>
       <!-- Petit badge de version : permet de vérifier que la dernière version
            déployée sur GitHub/Render est bien celle chargée par le navigateur
@@ -37,9 +39,35 @@
     <aside class="sidebar">
       <div id="station-panel" class="station-panel hidden">
         <button id="close-panel" class="close-btn" aria-label="Fermer">×</button>
-        <h2 id="station-name">—</h2>
-        <div id="station-lines"></div>
-        <div id="station-passages" class="passages"></div>
+
+        <div id="panel-station-view">
+          <h2 id="station-name">—</h2>
+          <div id="station-lines"></div>
+          <div id="station-passages" class="passages"></div>
+        </div>
+
+        <!-- Affiché au clic sur un train (point animé sur la carte). Voir
+             showTrainInfo()/renderTrainInfo() dans app.js. -->
+        <div id="panel-train-view" class="hidden">
+          <div class="train-info-head">
+            <span class="mini-chip" id="train-chip"></span>
+            <h2 id="train-direction">—</h2>
+          </div>
+          <div class="train-info-row"><span class="train-info-label">Prochain arrêt</span><span id="train-next-stop">—</span></div>
+          <div class="train-info-row"><span class="train-info-label">Vitesse</span><span id="train-speed">—</span></div>
+          <div class="train-info-row"><span class="train-info-label">Fréquence</span><span id="train-headway">—</span></div>
+          <div class="train-info-row train-status-row">
+            <span class="status-dot status-unknown" id="train-status-dot"></span>
+            <span id="train-status-label">—</span>
+          </div>
+          <div id="train-status-messages" class="line-messages-inline" style="display:none;"></div>
+          <p class="train-info-caveat">
+            Position simulée : cette rame ne représente aucun train réel identifiable, donc pas de
+            retard individuel connu. L'état ci-dessus est celui de la ligne entière, en temps réel.
+          </p>
+          <h3 class="train-itinerary-title">Itinéraire</h3>
+          <ul id="train-itinerary" class="train-itinerary"></ul>
+        </div>
       </div>
 
       <div class="legend">
@@ -52,6 +80,6 @@
   <!-- Le paramètre ?v=N ci-dessous force le navigateur à retélécharger ce
        fichier au lieu de garder une ancienne version en cache. À incrémenter
        à chaque fois que app.js ou style.css est modifié. -->
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
