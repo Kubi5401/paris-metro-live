@@ -4,6 +4,12 @@
 // - Prochains passages par station : /api/passages (réel, à la demande / clic)
 // - Position des trains sur la carte : SIMULATION (pas de flux GPS public pour le métro)
 
+// Numéro de version affiché dans le petit badge en coin de carte (voir init()).
+// À incrémenter à chaque modification de ce fichier — permet de vérifier en un
+// coup d'œil sur le site en ligne si une modification a bien été déployée,
+// sans avoir à deviner si le navigateur affiche une version en cache.
+const APP_VERSION = "v7";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const AVG_SPEED_MPS = 6.5; // vitesse commerciale moyenne approximative (arrêts inclus)
 const DEFAULT_HEADWAY_S = 240;
@@ -26,6 +32,9 @@ async function init() {
   svg = document.getElementById("map");
   mapGroup = document.createElementNS(SVG_NS, "g");
   svg.appendChild(mapGroup);
+
+  const versionBadge = document.getElementById("version-badge");
+  if (versionBadge) versionBadge.textContent = APP_VERSION;
 
   setupZoomPan();
 
