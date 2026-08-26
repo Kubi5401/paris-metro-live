@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Métro de Paris — en direct</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Métro de Paris <span class="live-dot" id="live-indicator"></span> <span class="live-label">en direct</span></h1>
+    <div class="topbar-info" id="clock"></div>
+  </header>
+
+  <main class="layout">
+    <section class="map-wrap">
+      <svg id="map" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="map-caveat">
+        Les trains affichés sont une <strong>simulation</strong> calculée à partir des fréquences
+        officielles — la RATP ne publie pas la position GPS réelle des rames. L'état du trafic et
+        les prochains passages en station, eux, sont bien issus des données temps réel officielles.
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div id="station-panel" class="station-panel hidden">
+        <button id="close-panel" class="close-btn" aria-label="Fermer">×</button>
+        <h2 id="station-name">—</h2>
+        <div id="station-lines"></div>
+        <div id="station-passages" class="passages"></div>
+      </div>
+
+      <div class="legend">
+        <h2>Lignes</h2>
+        <ul id="legend-list"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
