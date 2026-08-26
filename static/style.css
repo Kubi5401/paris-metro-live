@@ -297,6 +297,14 @@ html, body {
 .station-dot:hover { stroke: #ffffff; stroke-width: 2.2; }
 .station-dot.interchange { fill: #0b0e14; stroke: #ffffff; stroke-width: 2.2; r: 5; }
 
+/* Zone cliquable invisible, plus large que le point visuel, pour rendre les
+   stations faciles à toucher à la souris (voir buildEverything() dans app.js). */
+.station-hit {
+  fill: transparent;
+  stroke: none;
+  cursor: pointer;
+}
+
 .train-dot {
   filter: drop-shadow(0 0 3px rgba(255,255,255,0.5));
 }
