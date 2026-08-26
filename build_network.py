@@ -145,18 +145,34 @@ def main():
 
     for code, line_def in TOPOLOGY.items():
         available = per_line.get(code, {})
-        available_keys = list(available.keys())
+        # Empêche deux stations DIFFÉRENTES de la même ligne de se faire
+        # rapprocher du même arrêt réel : dès qu'une clé a servi (match exact
+        # ou approximatif), elle est retirée des candidats pour les stations
+        # suivantes. Sans ça, une station manquante du jeu de données ouvert
+        # (typiquement une extension récente comme "Fort d'Aubervilliers" sur
+        # la ligne 12) se fait absorber par la station homonyme la plus
+        # proche déjà attribuée (ex: "Mairie d'Aubervilliers"), et les deux
+        # stations se retrouvent avec des coordonnées et un identifiant
+        # temps réel identiques — silencieusement faux plutôt que signalé.
+        claimed_keys = set()
 
         def resolve_station(station_name):
             key = normalize(station_name)
-            hit = available.get(key)
-            if hit is None and available_keys:
-                close = difflib.get_close_matches(key, available_keys, n=1, cutoff=0.6)
+            hit = None
+            matched_key = None
+            if key in available:
+                hit = available[key]
+                matched_key = key
+            else:
+                candidates = [k for k in available if k not in claimed_keys]
+                close = difflib.get_close_matches(key, candidates, n=1, cutoff=0.6)
                 if close:
-                    hit = available[close[0]]
+                    matched_key = close[0]
+                    hit = available[matched_key]
             if hit is None:
                 unmatched.append(f"  ligne {code} : « {station_name} »")
                 return {"name": station_name, "lat": None, "lon": None, "monitoring_id": None}
+            claimed_keys.add(matched_key)
             return {
                 "name": station_name,
                 "lat": hit["lat"],
