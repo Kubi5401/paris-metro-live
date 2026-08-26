@@ -190,9 +190,15 @@ def api_passages():
         return jsonify({"error": "monitoring_id manquant"}), 400
 
     def fetch():
+        # NB : on n'envoie plus le LineRef à l'API elle-même. PRIM rejette
+        # avec "Le couple MonitoringRef/LineRef n'existe pas" dès que l'un
+        # des deux identifiants ne correspond pas EXACTEMENT à ce qu'attend
+        # son référentiel temps réel (ça arrive sur des stations récentes ou
+        # mal rapprochées par build_network.py) — même quand la station et
+        # la ligne existent bien toutes les deux séparément. On récupère donc
+        # tous les passages de la station, et on filtre nous-mêmes par ligne
+        # ci-dessous à partir du LineRef que l'API renvoie sur chaque passage.
         url = f"{BASE}/stop-monitoring?MonitoringRef={urllib.parse.quote(monitoring_id, safe=':')}"
-        if line_id:
-            url += f"&LineRef={urllib.parse.quote(f'STIF:Line::{line_id}:', safe=':')}"
         try:
             data = prim_get(url)
         except Exception as exc:
@@ -209,6 +215,10 @@ def api_passages():
         for v in visits:
             try:
                 mvj = v["MonitoredVehicleJourney"]
+                if line_id:
+                    vj_line_ref = (mvj.get("LineRef") or {}).get("value", "")
+                    if line_id not in vj_line_ref:
+                        continue
                 call = mvj["MonitoredCall"]
                 dest = mvj.get("DestinationName", [{}])[0].get("value", "?")
                 try:
