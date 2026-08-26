@@ -173,6 +173,14 @@ function setupZoomPan() {
   });
 
   function endPointer(e) {
+    // Important : pour un pointeur souris, le navigateur ne relâche jamais la
+    // capture tout seul (contrairement au tactile, où elle est libérée quand
+    // le doigt se lève). Sans ce relâchement explicite, TOUS les clics suivants
+    // seraient redirigés vers le <svg> lui-même au lieu de l'élément réellement
+    // sous le curseur (les cercles <circle> des stations) — ce qui rend les
+    // stations définitivement impossibles à cliquer après le tout premier
+    // pointerdown. On le relâche donc systématiquement ici.
+    try { svg.releasePointerCapture(e.pointerId); } catch (err) { /* déjà relâché */ }
     activePointers.delete(e.pointerId);
     svg.classList.remove("panning");
     if (activePointers.size === 1) {
@@ -471,12 +479,15 @@ async function loadPassages(key) {
     try {
       const res = await fetch(`/api/passages?monitoring_id=${encodeURIComponent(l.monitoringId)}&line_id=${encodeURIComponent(l.apiLineId || "")}`);
       const data = await res.json();
+      const chip = `<span class="siel-line-chip" style="background:${lineMeta[l.lineId].color}">${lineName}</span>`;
+      const head = `<div class="siel-board-head">${chip}<span class="siel-board-title">Prochains départs</span></div>`;
+
       if (data.error) {
-        sections.push(`<div class="passages-error">Ligne ${lineName} : ${data.error}</div>`);
+        sections.push(`<div class="siel-board siel-board-error">${head}<div class="siel-empty">${data.error}</div></div>`);
         continue;
       }
       if (!data.passages || !data.passages.length) {
-        sections.push(`<div class="passages-empty">Ligne ${lineName} : aucun passage annoncé</div>`);
+        sections.push(`<div class="siel-board siel-board-empty">${head}<div class="siel-empty">Aucun passage annoncé</div></div>`);
         continue;
       }
       // target = horodatage absolu du passage, pour pouvoir faire défiler le
@@ -484,14 +495,14 @@ async function loadPassages(key) {
       const rows = data.passages.slice(0, 4).map(p => {
         const targetMs = fetchedAt + p.seconds * 1000;
         return `
-        <div class="passage-row">
-          <span class="passage-dest">→ ${p.destination}</span>
-          <span class="passage-time" data-at-stop="${p.at_stop ? "1" : "0"}" data-target-ms="${targetMs}">${p.at_stop ? "à quai" : formatCountdown(p.seconds)}</span>
+        <div class="siel-row">
+          <span class="siel-dest">${p.destination}</span>
+          <span class="siel-time" data-at-stop="${p.at_stop ? "1" : "0"}" data-target-ms="${targetMs}">${p.at_stop ? "à quai" : formatCountdown(p.seconds)}</span>
         </div>`;
       }).join("");
-      sections.push(`<div style="margin-bottom:10px;"><strong style="color:var(--text-dim);font-size:12px;">Ligne ${lineName}</strong>${rows}</div>`);
+      sections.push(`<div class="siel-board">${head}<div class="siel-rows">${rows}</div></div>`);
     } catch (e) {
-      sections.push(`<div class="passages-error">Erreur réseau</div>`);
+      sections.push(`<div class="siel-board siel-board-error"><div class="siel-board-head"><span class="siel-line-chip" style="background:${lineMeta[l.lineId].color}">${lineName}</span><span class="siel-board-title">Prochains départs</span></div><div class="siel-empty">Erreur réseau</div></div>`);
     }
   }
   // ne remplace que si la sélection n'a pas changé entre-temps (l'utilisateur
@@ -502,7 +513,7 @@ async function loadPassages(key) {
 }
 
 function tickCountdowns() {
-  document.querySelectorAll(".passage-time[data-target-ms]").forEach(el => {
+  document.querySelectorAll(".siel-time[data-target-ms]").forEach(el => {
     if (el.dataset.atStop === "1") return;
     const remaining = Math.round((+el.dataset.targetMs - Date.now()) / 1000);
     el.textContent = remaining <= 0 ? "à quai" : formatCountdown(remaining);
