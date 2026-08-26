@@ -15,6 +15,11 @@
   <main class="layout">
     <section class="map-wrap">
       <svg id="map" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="zoom-controls">
+        <button id="zoom-in" title="Zoomer" aria-label="Zoomer">+</button>
+        <button id="zoom-out" title="Dézoomer" aria-label="Dézoomer">−</button>
+        <button id="zoom-reset" title="Réinitialiser la vue" aria-label="Réinitialiser la vue">⤾</button>
+      </div>
       <div class="map-caveat">
         Les trains affichés sont une <strong>simulation</strong> calculée à partir des fréquences
         officielles — la RATP ne publie pas la position GPS réelle des rames. L'état du trafic et
