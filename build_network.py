@@ -145,16 +145,30 @@ def main():
 
     for code, line_def in TOPOLOGY.items():
         available = per_line.get(code, {})
+
         # Empêche deux stations DIFFÉRENTES de la même ligne de se faire
-        # rapprocher du même arrêt réel : dès qu'une clé a servi (match exact
-        # ou approximatif), elle est retirée des candidats pour les stations
-        # suivantes. Sans ça, une station manquante du jeu de données ouvert
-        # (typiquement une extension récente comme "Fort d'Aubervilliers" sur
-        # la ligne 12) se fait absorber par la station homonyme la plus
-        # proche déjà attribuée (ex: "Mairie d'Aubervilliers"), et les deux
-        # stations se retrouvent avec des coordonnées et un identifiant
-        # temps réel identiques — silencieusement faux plutôt que signalé.
-        claimed_keys = set()
+        # rapprocher du même arrêt réel. Une station manquante du jeu de
+        # données ouvert (typiquement une extension récente comme "Fort
+        # d'Aubervilliers" sur la ligne 12) peut se faire absorber par
+        # rapprochement approximatif par la station homonyme la plus proche
+        # (ex: "Mairie d'Aubervilliers") — et sans précaution, "Mairie
+        # d'Aubervilliers" retrouverait quand même ENSUITE sa propre
+        # correspondance exacte, ce qui donnerait deux stations différentes
+        # avec des coordonnées et un identifiant temps réel identiques,
+        # silencieusement faux plutôt que signalé.
+        #
+        # Solution en deux passes : on réserve d'abord toutes les
+        # correspondances EXACTES de la ligne (elles ne peuvent jamais être
+        # volées), puis on ne laisse le rapprochement approximatif piocher
+        # que parmi les arrêts non réservés. Ainsi l'ordre de traitement des
+        # stations n'a plus d'influence sur le résultat.
+        station_names = list(line_def["trunk"])
+        for branch in line_def.get("branches", []):
+            station_names.extend(branch["stations"])
+
+        claimed_keys = {
+            normalize(name) for name in station_names if normalize(name) in available
+        }
 
         def resolve_station(station_name):
             key = normalize(station_name)
