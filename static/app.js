@@ -67,6 +67,13 @@ function tickClock() {
 // à l'intérieur du groupe se déplace/zoome.
 const viewState = { x: 0, y: 0, k: 1 };
 const ZOOM_MIN = 1, ZOOM_MAX = 14;
+// Distance (en pixels écran) à partir de laquelle un pointerdown->pointerup
+// est considéré comme un glisser plutôt qu'un clic. 3px était bien trop
+// strict : un vrai clic de souris déplace quasi toujours le curseur de
+// quelques pixels (pression du bouton, léger tremblement de la main), donc
+// la quasi-totalité des clics étaient à tort traités comme des glissers et
+// la sélection de station ne se déclenchait jamais.
+const DRAG_THRESHOLD_PX = 8;
 let dragMoved = false;
 
 function applyMapTransform() {
@@ -161,7 +168,7 @@ function setupZoomPan() {
     if (panState) {
       const dx = e.clientX - panState.lastX;
       const dy = e.clientY - panState.lastY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) dragMoved = true;
       if (!dragMoved) return;
       const ctm = svg.getScreenCTM();
       viewState.x += dx / ctm.a;
