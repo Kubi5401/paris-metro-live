@@ -178,6 +178,10 @@ html, body {
 
 .station-panel.hidden { display: none; }
 
+/* Utilitaire générique : bascule entre la vue "station" et la vue "train" à
+   l'intérieur du panneau (voir selectStation()/showTrainInfo() dans app.js). */
+.hidden { display: none; }
+
 .close-btn {
   position: absolute;
   top: 8px;
@@ -198,6 +202,74 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 700; color: #10121a;
 }
+
+/* Panneau affiché au clic sur un train (voir showTrainInfo() dans app.js) */
+.train-info-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.train-info-head h2 { margin: 0; }
+
+.train-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+.train-info-row:last-of-type { border-bottom: none; }
+
+.train-info-label { color: var(--text-dim); }
+
+.train-status-row { gap: 8px; justify-content: flex-start; padding-top: 10px; }
+
+.line-messages-inline {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  padding: 4px 0 2px;
+}
+
+.train-info-caveat {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 10px 0;
+}
+
+.train-itinerary-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-dim);
+  margin: 4px 0 6px;
+}
+
+.train-itinerary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.train-itinerary li {
+  padding: 5px 8px;
+  border-radius: 5px;
+}
+.train-itinerary li.past { color: var(--text-dim); opacity: 0.55; }
+.train-itinerary li.current { color: var(--accent); font-weight: 700; background: rgba(79, 209, 197, 0.1); }
+
+/* Points-trains (voir animateTrains() dans app.js) : cliquables pour afficher
+   le panneau ci-dessus. */
+.train-dot { cursor: pointer; }
 
 /* Affichage "SIEL" (panneau des prochains départs, façon quai de métro) */
 .siel-board {
@@ -339,6 +411,23 @@ html, body {
 
 .train-dot {
   filter: drop-shadow(0 0 3px rgba(255,255,255,0.5));
+}
+
+/* Marqueur "rame réellement à quai" (voir loadPassages() dans app.js) : bien
+   distinct des points .train-dot qui, eux, ne sont qu'une animation simulée
+   et ne correspondent à aucune position réelle. Celui-ci est positionné
+   exactement sur la station sélectionnée, uniquement quand le SIEL confirme
+   qu'une rame y est actuellement à quai. */
+.live-train-marker {
+  stroke: #ffffff;
+  stroke-width: 1.6;
+  pointer-events: none;
+  animation: liveTrainPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes liveTrainPulse {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255,255,255,0.8)); opacity: 1; }
+  50% { filter: drop-shadow(0 0 9px rgba(255,255,255,0.95)); opacity: 0.75; }
 }
 
 .station-label {
