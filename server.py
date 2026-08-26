@@ -71,7 +71,11 @@ def prim_get(url):
         headers={"apiKey": API_KEY, "Accept": "application/json"},
         timeout=20,
     )
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        # on inclut le corps de la réponse : PRIM y met souvent le vrai motif
+        # du rejet (paramètre invalide, identifiant inconnu...), bien plus
+        # utile que le générique "400 Bad Request".
+        raise RuntimeError(f"{resp.status_code} sur {url} -> {resp.text[:500]}")
     return resp.json()
 
 
