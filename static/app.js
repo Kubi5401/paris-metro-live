@@ -8,7 +8,7 @@
 // À incrémenter à chaque modification de ce fichier — permet de vérifier en un
 // coup d'œil sur le site en ligne si une modification a bien été déployée,
 // sans avoir à deviner si le navigateur affiche une version en cache.
-const APP_VERSION = "v9";
+const APP_VERSION = "v11";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const AVG_SPEED_MPS = 6.5; // vitesse commerciale moyenne approximative (arrêts inclus)
@@ -23,9 +23,13 @@ let stationRegistry = {}; // normalizedName -> { name, x, y, lines: [{lineId, mo
 let trainPaths = [];    // [{ lineId, points: [{x,y,cum}], totalLenPx, totalLenM, headway, trainsCount }]
 let selectedStationKey = null;
 let selectedCircleEl = null;   // <circle> du point visuel actuellement mis en surbrillance
+let liveMarkers = [];          // marqueurs "train à quai" affichés d'après le SIEL (voir loadPassages)
 let passagesRefreshTimer = null; // ré-interroge le serveur pendant que le panneau est ouvert
 let countdownTickTimer = null;   // fait défiler les compte à rebours seconde par seconde
 const PASSAGES_REFRESH_MS = 20000;
+
+let selectedTrainDotEl = null;   // <circle class="train-dot"> actuellement affiché dans le panneau
+let trainPanelTickTimer = null;  // rafraîchit le panneau train (position simulée qui avance) chaque seconde
 
 document.addEventListener("DOMContentLoaded", init);
 
@@ -39,13 +43,7 @@ async function init() {
 
   setupZoomPan();
 
-  document.getElementById("close-panel").addEventListener("click", () => {
-    document.getElementById("station-panel").classList.add("hidden");
-    if (selectedCircleEl) selectedCircleEl.classList.remove("selected");
-    selectedCircleEl = null;
-    selectedStationKey = null;
-    stopPassagesLiveUpdates();
-  });
+  document.getElementById("close-panel").addEventListener("click", closePanel);
 
   tickClock();
   setInterval(tickClock, 1000);
@@ -215,7 +213,16 @@ function setupZoomPan() {
     if (!dragMoved && activePointers.size === 0) {
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const key = el && el.dataset ? el.dataset.stationKey : null;
-      if (key) selectStation(key);
+      if (key) {
+        selectStation(key);
+      } else if (el && el.classList && el.classList.contains("train-dot")) {
+        showTrainInfo(el);
+      } else {
+        // Les points-trains sont petits et en mouvement permanent : on
+        // tolère un clic à proximité plutôt que d'exiger le pixel exact.
+        const nearTrain = findNearestTrainDot(e.clientX, e.clientY);
+        if (nearTrain) showTrainInfo(nearTrain);
+      }
     }
 
     if (activePointers.size === 1) {
@@ -301,16 +308,17 @@ function buildEverything() {
 
     const trunkPts = line.stations.map(s => ({ s, p: project(s.lat, s.lon) }));
     trunkPts.forEach(({ s }) => registerStation(s, line.id, line.api_line_id));
-    drawPolyline(trunkPts.map(o => o.p).filter(Boolean), line.color, line.id);
-    addTrainPath(line.id, trunkPts.map(o => o.p).filter(Boolean));
+    const trunkValid = trunkPts.filter(o => o.p);
+    drawPolyline(trunkValid.map(o => o.p), line.color, line.id);
+    addTrainPath(line.id, trunkValid); // garde le nom de chaque station, utile pour l'itinéraire affiché au clic sur un train
 
     for (const branch of line.branches || []) {
       const branchPts = branch.stations.map(s => ({ s, p: project(s.lat, s.lon) }));
       branchPts.forEach(({ s }) => registerStation(s, line.id, line.api_line_id));
       const lastTrunk = [...trunkPts].reverse().find(o => o.p);
-      const full = (lastTrunk ? [lastTrunk] : []).concat(branchPts);
-      drawPolyline(full.map(o => o.p).filter(Boolean), line.color, line.id);
-      addTrainPath(line.id, full.map(o => o.p).filter(Boolean));
+      const full = (lastTrunk ? [lastTrunk] : []).concat(branchPts).filter(o => o.p);
+      drawPolyline(full.map(o => o.p), line.color, line.id);
+      addTrainPath(line.id, full);
     }
   }
 
@@ -377,31 +385,49 @@ function drawPolyline(points, color, lineId) {
   mapGroup.appendChild(overlay);
 }
 
-function addTrainPath(lineId, points) {
-  if (points.length < 2) return;
+function addTrainPath(lineId, stationPoints) {
+  // stationPoints : [{ s: <station brute>, p: {x,y} }], déjà filtré pour ne
+  // garder que les points projetables. On conserve le nom de chaque station
+  // (via s.name) en plus des coordonnées : sans ça, il serait impossible
+  // d'afficher un itinéraire ou une destination au clic sur un train.
+  if (stationPoints.length < 2) return;
   let cum = 0;
-  const withCum = points.map((p, i) => {
-    if (i > 0) cum += Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y);
-    return { ...p, cum };
+  const withCum = stationPoints.map(({ s, p }, i) => {
+    if (i > 0) {
+      const prev = stationPoints[i - 1].p;
+      cum += Math.hypot(p.x - prev.x, p.y - prev.y);
+    }
+    return { x: p.x, y: p.y, cum, name: s.name };
   });
   const totalLenPx = cum;
   // longueur réelle approx : on reprojette la distance px -> mètres via le ratio
   // moyen (suffisant pour une simulation, pas besoin d'exactitude ici)
   const headway = HEADWAY_OVERRIDES[lineId] || (BUSY_LINES.has(lineId) ? 120 : DEFAULT_HEADWAY_S);
   trainPaths.push({ lineId, points: withCum, totalLenPx, headway });
+  const pathIndex = trainPaths.length - 1;
 
   for (let d = 0; d < 2; d++) {
     const dot = document.createElementNS(SVG_NS, "circle");
     dot.setAttribute("r", 4.2);
     dot.setAttribute("fill", lineMeta[lineId] ? lineMeta[lineId].color : "#fff");
     dot.setAttribute("class", "train-dot");
-    dot.dataset.pathIndex = trainPaths.length - 1;
+    dot.dataset.pathIndex = pathIndex;
     dot.dataset.direction = d;
+    // Origine/destination sont fixes pour ce point tout au long de son trajet
+    // (contrairement au "prochain arrêt", recalculé à chaque frame dans
+    // animateTrains) : direction 0 va du premier au dernier point du tracé,
+    // direction 1 fait le trajet inverse.
+    dot.dataset.originName = d === 0 ? withCum[0].name : withCum[withCum.length - 1].name;
+    dot.dataset.destName = d === 0 ? withCum[withCum.length - 1].name : withCum[0].name;
     mapGroup.appendChild(dot);
   }
 }
 
 function pointAt(path, fraction) {
+  // prevName/curName désignent les stations encadrant la position, dans
+  // l'ordre spatial du tracé (indépendant du sens de circulation du train :
+  // c'est animateTrains qui, selon la direction, décide laquelle des deux
+  // est le "prochain arrêt").
   const target = fraction * path.totalLenPx;
   const pts = path.points;
   for (let i = 1; i < pts.length; i++) {
@@ -409,10 +435,16 @@ function pointAt(path, fraction) {
       const prev = pts[i - 1], cur = pts[i];
       const segLen = cur.cum - prev.cum || 1;
       const t = (target - prev.cum) / segLen;
-      return { x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t };
+      return {
+        x: prev.x + (cur.x - prev.x) * t,
+        y: prev.y + (cur.y - prev.y) * t,
+        prevName: prev.name,
+        curName: cur.name,
+      };
     }
   }
-  return pts[pts.length - 1];
+  const last = pts[pts.length - 1];
+  return { x: last.x, y: last.y, prevName: last.name, curName: last.name };
 }
 
 function animateTrains() {
@@ -432,8 +464,26 @@ function animateTrains() {
     const pos = pointAt(path, frac);
     dot.setAttribute("cx", pos.x);
     dot.setAttribute("cy", pos.y);
+    // En direction 0 le train avance vers les index croissants (donc vers
+    // "curName") ; en direction 1 c'est l'inverse.
+    dot.dataset.nextStop = direction === 0 ? pos.curName : pos.prevName;
+    dot.dataset.prevStop = direction === 0 ? pos.prevName : pos.curName;
   });
   requestAnimationFrame(animateTrains);
+}
+
+// Les points-trains ont un rayon écran de quelques pixels à peine, et sont en
+// mouvement permanent : viser le pixel exact est peu réaliste. On cherche donc
+// le point-train le plus proche du clic, dans un rayon de tolérance raisonnable.
+function findNearestTrainDot(clientX, clientY, maxDistPx = 14) {
+  let best = null, bestDist = maxDistPx;
+  mapGroup.querySelectorAll(".train-dot").forEach(dot => {
+    const r = dot.getBoundingClientRect();
+    const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    const dist = Math.hypot(cx - clientX, cy - clientY);
+    if (dist <= bestDist) { bestDist = dist; best = dot; }
+  });
+  return best;
 }
 
 // ---------- Légende + trafic ----------
@@ -492,7 +542,25 @@ async function refreshTraffic() {
 
 // ---------- Panneau station ----------
 
+function closePanel() {
+  document.getElementById("station-panel").classList.add("hidden");
+  if (selectedCircleEl) selectedCircleEl.classList.remove("selected");
+  selectedCircleEl = null;
+  selectedStationKey = null;
+  selectedTrainDotEl = null;
+  if (trainPanelTickTimer) clearInterval(trainPanelTickTimer);
+  trainPanelTickTimer = null;
+  stopPassagesLiveUpdates();
+}
+
 function selectStation(key) {
+  // Referme un éventuel panneau train ouvert (un seul panneau à la fois).
+  selectedTrainDotEl = null;
+  if (trainPanelTickTimer) clearInterval(trainPanelTickTimer);
+  trainPanelTickTimer = null;
+  document.getElementById("panel-train-view").classList.add("hidden");
+  document.getElementById("panel-station-view").classList.remove("hidden");
+
   // Met en surbrillance le point de la station sélectionnée sur la carte, et
   // retire la surbrillance de la précédente le cas échéant.
   if (selectedCircleEl) selectedCircleEl.classList.remove("selected");
@@ -523,6 +591,91 @@ function stopPassagesLiveUpdates() {
   if (countdownTickTimer) clearInterval(countdownTickTimer);
   passagesRefreshTimer = null;
   countdownTickTimer = null;
+  clearLiveMarkers();
+}
+
+// Les points de train qui circulent en continu sur la carte sont une pure
+// SIMULATION (vitesse/fréquence moyennes) et ne correspondent à aucune rame
+// réelle précise : leur position ne peut donc pas coïncider avec ce qu'annonce
+// le SIEL. Pour éviter la confusion (« le SIEL dit qu'un métro est à quai,
+// mais aucun point n'est sur la station »), on affiche un marqueur séparé,
+// lui bien réel, exactement sur la station sélectionnée quand le SIEL indique
+// qu'une rame y est actuellement à quai.
+function clearLiveMarkers() {
+  liveMarkers.forEach(el => el.remove());
+  liveMarkers = [];
+}
+
+// ---------- Panneau train ----------
+// Vitesse commerciale moyenne simulée, convertie en km/h pour l'affichage
+// (voir AVG_SPEED_MPS en tête de fichier). C'est une moyenne du réseau, pas
+// une mesure de cette rame en particulier.
+const AVG_SPEED_KMH = Math.round(AVG_SPEED_MPS * 3.6);
+
+const STATUS_LABELS = { normal: "Trafic normal", perturbe: "Trafic perturbé", interrompu: "Trafic interrompu", unknown: "Trafic inconnu" };
+
+function showTrainInfo(dotEl) {
+  // Un seul panneau à la fois : referme proprement un panneau station ouvert
+  // (timers de rafraîchissement + marqueurs "à quai" + surbrillance station).
+  stopPassagesLiveUpdates();
+  if (selectedCircleEl) selectedCircleEl.classList.remove("selected");
+  selectedCircleEl = null;
+  selectedStationKey = null;
+
+  selectedTrainDotEl = dotEl;
+  document.getElementById("panel-station-view").classList.add("hidden");
+  document.getElementById("panel-train-view").classList.remove("hidden");
+  document.getElementById("station-panel").classList.remove("hidden");
+
+  renderTrainInfo();
+  if (trainPanelTickTimer) clearInterval(trainPanelTickTimer);
+  // La position simulée avance en continu : on réaffiche le "prochain arrêt"
+  // toutes les secondes plutôt que de figer l'info au moment du clic.
+  trainPanelTickTimer = setInterval(renderTrainInfo, 1000);
+}
+
+function renderTrainInfo() {
+  const dot = selectedTrainDotEl;
+  // dot.isConnected redevient faux si la carte a été reconstruite entretemps
+  // (ex. rechargement du réseau) : le point cliqué n'existe alors plus.
+  if (!dot || !dot.isConnected) { closePanel(); return; }
+
+  const path = trainPaths[+dot.dataset.pathIndex];
+  const direction = +dot.dataset.direction;
+  const line = network.lines.find(x => x.id === path.lineId);
+  const meta = lineMeta[path.lineId];
+  const status = meta.status || "unknown";
+
+  document.getElementById("train-chip").style.background = meta.color;
+  document.getElementById("train-chip").textContent = line.name;
+  document.getElementById("train-direction").textContent = `Direction ${dot.dataset.destName}`;
+  document.getElementById("train-next-stop").textContent = dot.dataset.nextStop || "—";
+  document.getElementById("train-speed").textContent = `~${AVG_SPEED_KMH} km/h (vitesse commerciale moyenne, simulée)`;
+  document.getElementById("train-headway").textContent = `Environ une rame toutes les ${Math.round(path.headway / 60)} min (simulé)`;
+
+  const statusDot = document.getElementById("train-status-dot");
+  statusDot.className = "status-dot status-" + status;
+  document.getElementById("train-status-label").textContent = STATUS_LABELS[status] || STATUS_LABELS.unknown;
+  const msgBox = document.getElementById("train-status-messages");
+  if (meta.messages && meta.messages.length) {
+    msgBox.style.display = "block";
+    msgBox.textContent = meta.messages.map(m => m.title || m.text).filter(Boolean).join(" · ");
+  } else {
+    msgBox.style.display = "none";
+  }
+
+  // Itinéraire dans l'ordre de circulation réel de cette rame (inversé par
+  // rapport à l'ordre spatial du tracé si direction === 1), avec les arrêts
+  // déjà desservis estompés et le prochain arrêt mis en évidence.
+  const orderedNames = direction === 0
+    ? path.points.map(p => p.name)
+    : [...path.points.map(p => p.name)].reverse();
+  const nextIdx = orderedNames.indexOf(dot.dataset.nextStop);
+  const itineraryHtml = orderedNames.map((name, i) => {
+    const cls = nextIdx === -1 ? "" : (i < nextIdx ? "past" : i === nextIdx ? "current" : "");
+    return `<li class="${cls}">${i === nextIdx ? "▶ " : ""}${name}</li>`;
+  }).join("");
+  document.getElementById("train-itinerary").innerHTML = itineraryHtml;
 }
 
 async function loadPassages(key) {
@@ -531,6 +684,7 @@ async function loadPassages(key) {
   const fetchedAt = Date.now();
 
   const sections = [];
+  const atStopLineIds = new Set(); // lignes pour lesquelles le SIEL annonce une rame à quai ici
   for (const l of st.lines) {
     if (!l.monitoringId) continue;
     const lineName = network.lines.find(x => x.id === l.lineId).name;
@@ -548,6 +702,7 @@ async function loadPassages(key) {
         sections.push(`<div class="siel-board siel-board-empty">${head}<div class="siel-empty">Aucun passage annoncé</div></div>`);
         continue;
       }
+      if (data.passages.some(p => p.at_stop)) atStopLineIds.add(l.lineId);
       // target = horodatage absolu du passage, pour pouvoir faire défiler le
       // compte à rebours côté client sans re-solliciter le serveur chaque seconde
       const rows = data.passages.slice(0, 4).map(p => {
@@ -567,6 +722,21 @@ async function loadPassages(key) {
   // a peut-être cliqué ailleurs pendant que les requêtes étaient en vol)
   if (selectedStationKey === key) {
     passagesBox.innerHTML = sections.join("") || `<div class="passages-empty">Pas de données disponibles</div>`;
+
+    clearLiveMarkers();
+    let offset = 0;
+    for (const lineId of atStopLineIds) {
+      const marker = document.createElementNS(SVG_NS, "circle");
+      marker.setAttribute("cx", st.x + offset);
+      marker.setAttribute("cy", st.y);
+      marker.setAttribute("r", 6);
+      marker.setAttribute("fill", lineMeta[lineId].color);
+      marker.setAttribute("class", "live-train-marker");
+      marker.setAttribute("vector-effect", "non-scaling-stroke");
+      mapGroup.appendChild(marker);
+      liveMarkers.push(marker);
+      offset += 9; // légèrement décalés si plusieurs lignes ont une rame à quai en même temps
+    }
   }
 }
 
