@@ -8,7 +8,7 @@
 // À incrémenter à chaque modification de ce fichier — permet de vérifier en un
 // coup d'œil sur le site en ligne si une modification a bien été déployée,
 // sans avoir à deviner si le navigateur affiche une version en cache.
-const APP_VERSION = "v7";
+const APP_VERSION = "v8";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const AVG_SPEED_MPS = 6.5; // vitesse commerciale moyenne approximative (arrêts inclus)
@@ -199,6 +199,22 @@ function setupZoomPan() {
     try { svg.releasePointerCapture(e.pointerId); } catch (err) { /* déjà relâché */ }
     activePointers.delete(e.pointerId);
     svg.classList.remove("panning");
+
+    // Sélection de station : volontairement PAS via l'événement "click" natif.
+    // Tant qu'un pointeur a la capture, certains navigateurs/versions/OS
+    // recalculent la cible du "click" de façon incohérente (parfois le <svg>
+    // lui-même, parfois l'élément réellement sous le curseur, selon le moment
+    // exact où la capture est relâchée par rapport à la génération de
+    // l'événement) — ce qui explique des clics qui marchent dans certains
+    // environnements de test mais pas chez certains utilisateurs. On
+    // détermine donc nous-mêmes, ici, l'élément sous le point de relâchement,
+    // ce qui est fiable quel que soit le navigateur.
+    if (!dragMoved && activePointers.size === 0) {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const key = el && el.dataset ? el.dataset.stationKey : null;
+      if (key) selectStation(key);
+    }
+
     if (activePointers.size === 1) {
       const [[, p]] = activePointers;
       startPan(p.x, p.y);
@@ -209,15 +225,6 @@ function setupZoomPan() {
   }
   svg.addEventListener("pointerup", endPointer);
   svg.addEventListener("pointercancel", endPointer);
-
-  // Empêche qu'un glisser se termine par la sélection accidentelle de la
-  // station survolée au moment du relâchement.
-  svg.addEventListener("click", (e) => {
-    if (dragMoved) {
-      e.stopPropagation();
-      dragMoved = false;
-    }
-  }, true);
 
   document.getElementById("zoom-in").addEventListener("click", () => zoomAt(500, 500, 1.3));
   document.getElementById("zoom-out").addEventListener("click", () => zoomAt(500, 500, 1 / 1.3));
@@ -318,12 +325,15 @@ function buildEverything() {
     const isInterchange = interchangeKeys.has(key) || st.lines.length > 1;
     const visualR = isInterchange ? 5 : 3;
 
+    // La sélection ne dépend plus d'un écouteur "click" par élément : elle est
+    // gérée une seule fois, de façon centralisée, dans endPointer() ci-dessus
+    // via document.elementFromPoint() + cet attribut data-station-key.
     const hitArea = document.createElementNS(SVG_NS, "circle");
     hitArea.setAttribute("cx", st.x);
     hitArea.setAttribute("cy", st.y);
     hitArea.setAttribute("r", visualR + HIT_RADIUS_PAD);
     hitArea.setAttribute("class", "station-hit");
-    hitArea.addEventListener("click", () => selectStation(key));
+    hitArea.dataset.stationKey = key;
     mapGroup.appendChild(hitArea);
 
     const circle = document.createElementNS(SVG_NS, "circle");
@@ -336,7 +346,7 @@ function buildEverything() {
     // 2px devient un anneau énorme et disproportionné. "non-scaling-stroke"
     // garde l'épaisseur du trait fixe à l'écran quel que soit le zoom.
     circle.setAttribute("vector-effect", "non-scaling-stroke");
-    circle.addEventListener("click", () => selectStation(key));
+    circle.dataset.stationKey = key;
     mapGroup.appendChild(circle);
   }
 
