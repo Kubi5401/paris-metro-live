@@ -305,6 +305,26 @@ html, body {
   cursor: pointer;
 }
 
+/* Petit badge (coin supérieur droit de la carte) affichant la version du code
+   JS réellement chargée par le navigateur — sert à vérifier qu'un commit
+   GitHub a bien été déployé et n'est pas resté coincé en cache. */
+.version-badge {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 2;
+  font-family: "Share Tech Mono", "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: rgba(19, 23, 34, 0.85);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  pointer-events: none;
+  user-select: none;
+}
+
 .train-dot {
   filter: drop-shadow(0 0 3px rgba(255,255,255,0.5));
 }
