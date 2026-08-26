@@ -297,13 +297,30 @@ function buildEverything() {
 
   // 4. dessiner les stations (une fois, par-dessus les lignes)
   const interchangeKeys = new Set((network.interchanges || []).map(i => normalize(i.name)));
+  // Le point visuel (r=3, ou 5 pour les correspondances) ne fait que 4-9px
+  // de diamètre une fois affiché à l'écran : bien trop petit pour être visé
+  // de façon fiable à la souris, surtout au milieu des ~300 stations de la
+  // carte. On superpose donc, sous chaque point, un cercle invisible plus
+  // large qui reçoit réellement le clic (le point visuel reste petit et net,
+  // seule sa zone cliquable est agrandie).
+  const HIT_RADIUS_PAD = 6;
   for (const key in stationRegistry) {
     const st = stationRegistry[key];
     const isInterchange = interchangeKeys.has(key) || st.lines.length > 1;
+    const visualR = isInterchange ? 5 : 3;
+
+    const hitArea = document.createElementNS(SVG_NS, "circle");
+    hitArea.setAttribute("cx", st.x);
+    hitArea.setAttribute("cy", st.y);
+    hitArea.setAttribute("r", visualR + HIT_RADIUS_PAD);
+    hitArea.setAttribute("class", "station-hit");
+    hitArea.addEventListener("click", () => selectStation(key));
+    mapGroup.appendChild(hitArea);
+
     const circle = document.createElementNS(SVG_NS, "circle");
     circle.setAttribute("cx", st.x);
     circle.setAttribute("cy", st.y);
-    circle.setAttribute("r", isInterchange ? 5 : 3);
+    circle.setAttribute("r", visualR);
     circle.setAttribute("class", "station-dot" + (isInterchange ? " interchange" : ""));
     circle.addEventListener("click", () => selectStation(key));
     mapGroup.appendChild(circle);
